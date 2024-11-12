@@ -6,3 +6,4 @@ parse that into true json and display the output.
 ## Hot Keys
 - `Option + Enter` - Submits input
 - `Option + Backspace` - Goes back to input screen
+- `Option + d` - Clears input screen
