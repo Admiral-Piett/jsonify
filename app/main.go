@@ -33,9 +33,7 @@ func main() {
 
     input.AddTextArea("Input", "", 0, 20, maxInputLength, nil)
     input.AddButton("Submit", submitInput)
-    input.AddButton("Clear", func() {
-        input.GetFormItem(0).(*tview.TextArea).SetText("", true)
-    })
+    input.AddButton("Clear", clearInput)
     input.AddButton("Quit", func() {
         app.Stop()
     })
@@ -58,6 +56,10 @@ func submitInput() {
 
 func back() {
     pages.SwitchToPage("Input")
+}
+
+func clearInput() {
+    input.GetFormItem(0).(*tview.TextArea).SetText("", true)
 }
 
 func sanitizeText(text string) string {
@@ -144,6 +146,10 @@ func hotKeyParser(event *tcell.EventKey) *tcell.EventKey {
     }
     if event.Key() == tcell.KeyDEL && event.Modifiers() == tcell.ModAlt {
         back()
+        return event
+    }
+    if event.Rune() == 100 && event.Modifiers() == tcell.ModAlt {
+        clearInput()
         return event
     }
     return event
