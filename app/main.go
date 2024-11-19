@@ -1,12 +1,9 @@
 package main
 
 import (
-    "encoding/json"
-    "fmt"
     "github.com/gdamore/tcell/v2"
     "github.com/rivo/tview"
     "os/exec"
-    "strings"
 )
 
 const maxInputLength = 100_000
@@ -31,7 +28,8 @@ func main() {
         setToClipboard(text)
     })
 
-    input.AddTextArea("Input", "", 0, 20, maxInputLength, nil)
+    //input.AddTextArea("Input", "", 0, 20, maxInputLength, nil)
+    input.AddTextArea("Input", "", 0, 5, maxInputLength, nil)
     input.AddButton("Submit", submitInput)
     input.AddButton("Clear", clearInput)
     input.AddButton("Quit", func() {
@@ -62,65 +60,6 @@ func clearInput() {
     input.GetFormItem(0).(*tview.TextArea).SetText("", true)
 }
 
-func sanitizeText(text string) string {
-    text = strings.TrimSpace(text)
-    if !strings.HasPrefix(text, "{") {
-        text = "{" + text
-    }
-    if !strings.HasSuffix(text, "}") {
-        if strings.HasSuffix(text, ",") {
-            text = text[:len(text)-1]
-        }
-        text = text + "}"
-    }
-    return text
-}
-
-func parse(w tview.TextViewWriter, text string) {
-    defer w.Close()
-    w.Clear()
-
-    data := &map[string]interface{}{}
-
-    text = sanitizeText(text)
-
-    err := json.Unmarshal([]byte(text), data)
-    if err != nil {
-        fmt.Fprintf(w, "Invalid input: \n%s", err.Error())
-        return
-    }
-
-    result := make(map[string]interface{})
-    for path, value := range *data {
-        if path == "" {
-            continue
-        }
-        setNestedValue(result, path, value)
-    }
-
-    jsonData, err := json.MarshalIndent(result, "", "  ")
-    if err != nil {
-        fmt.Fprintf(w, "Unable to marshall result: \n%s", err.Error())
-        return
-    }
-    jsonStr := string(jsonData)
-    fmt.Fprintf(w, "%s", jsonStr)
-}
-
-func setNestedValue(data map[string]interface{}, path string, value interface{}) {
-    keys := strings.Split(path, ".")
-    current := data
-
-    for _, key := range keys[:len(keys)-1] {
-        if _, ok := current[key]; !ok {
-            current[key] = make(map[string]interface{})
-        }
-        current = current[key].(map[string]interface{})
-    }
-
-    current[keys[len(keys)-1]] = value
-}
-
 func setToClipboard(content string) error {
     cmd := exec.Command("pbcopy")
     in, err := cmd.StdinPipe()
@@ -148,6 +87,7 @@ func hotKeyParser(event *tcell.EventKey) *tcell.EventKey {
         back()
         return event
     }
+    // 100 is "d" as a `rune`, the `EventKey` stores all ASCII characters like that.
     if event.Rune() == 100 && event.Modifiers() == tcell.ModAlt {
         clearInput()
         return event
