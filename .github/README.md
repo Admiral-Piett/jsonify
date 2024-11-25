@@ -8,7 +8,6 @@ parse that into true json and display the output.
 ### NOTE: Arrays or straight text not yet supported
 
 ## Hot Keys
-**NOTE**: MacOS tested only
 - `Cmd + q` - Exit
 
 #### Select Input Area

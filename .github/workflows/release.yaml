@@ -39,14 +39,19 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22'
+          go-version: '1.23'
+
       - run: go version
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v4
+      - name: Install Core
+        run: go install cogentcore.org/core/cmd/core@main
+
+      - name: Build App arm64
+        run: core build darwin/arm64 -name jsonify_arm64/jsonify -dir app
+
+      - name: ⏫ Upload arm64 build
+        uses: nmerget/upload-gzip-artifact@main
         with:
-          distribution: goreleaser
-          version: v1.19.2
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
+          name: jsonify_arm64
+          path: jsonify_arm64
+
