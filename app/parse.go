@@ -3,7 +3,6 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "github.com/rivo/tview"
     "regexp"
     "strings"
 )
@@ -84,10 +83,7 @@ func correctInvalidValues(text string) (string, error) {
     return strings.Join(formatedLines, "\n"), nil
 }
 
-func parse(w tview.TextViewWriter, text string) {
-    defer w.Close()
-    w.Clear()
-
+func parse(text string) (string, error) {
     data := &map[string]interface{}{}
 
     text = prepText(text)
@@ -99,13 +95,11 @@ func parse(w tview.TextViewWriter, text string) {
         //  overall document is in a good state after our refactoring.
         text = prepText(text)
         if err != nil {
-            fmt.Fprintf(w, "Invalid input: \n%s", err.Error())
-            return
+            return "", err
         }
         err = json.Unmarshal([]byte(text), data)
         if err != nil {
-            fmt.Fprintf(w, "Invalid input: \n%s", err.Error())
-            return
+            return "", err
         }
     }
 
@@ -119,11 +113,10 @@ func parse(w tview.TextViewWriter, text string) {
 
     jsonData, err := json.MarshalIndent(result, "", "  ")
     if err != nil {
-        fmt.Fprintf(w, "Unable to marshall result: \n%s", err.Error())
-        return
+        return "", err
     }
     jsonStr := string(jsonData)
-    fmt.Fprintf(w, "%s", jsonStr)
+    return jsonStr, nil
 }
 
 func setNestedValue(data map[string]interface{}, path string, value interface{}) {
