@@ -9,6 +9,7 @@ import (
     "cogentcore.org/core/styles/states"
     "cogentcore.org/core/styles/units"
     "cogentcore.org/core/texteditor"
+    "github.com/Admiral-Piett/jsonify/app/parse"
     "os/exec"
 )
 
@@ -65,7 +66,7 @@ func main() {
     // --- Event Handlers
     // TODO - clean this uuuup, do we really need to be so javascripty?
     onSubmit := func(e events.Event) {
-        formattedText, err := parse(inputEditor.Buffer.String())
+        formattedText, err := parse.Parse(inputEditor.Buffer.String())
         if err != nil {
             core.ErrorDialog(b, err, "Unable to parse input")
             return
