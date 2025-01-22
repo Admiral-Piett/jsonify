@@ -7,6 +7,8 @@ import (
     "strings"
 )
 
+var leadingOrTrailingQuotes = regexp2.MustCompile(`^\\*"|\\*"$`, 0)
+
 // Finds all quotes, with any amount of escaped slashes
 var targetQuotes = regexp.MustCompile(`\\*"`)
 var targetSingleQuotes = regexp.MustCompile(`\\*'`)
@@ -22,8 +24,16 @@ var targetUnquotedValues = regexp.MustCompile(`:\s*([a-zA-Z0-9_\-:.TZ\s]+)(\s*[,
 //  - We definitely want to consider them part of the JSON doc (too bad that choice for now, maybe a switch later?),
 //  but would that work if I just blindly replace all the escaped strings?
 func Parse(input string) (string, error) {
-    // Strip out escaping
-    filtered := targetSingleQuotes.ReplaceAllString(input, "\"")
+    filtered := strings.TrimSpace(input)
+
+    // Strip out any leading/trailing quotes
+    filtered, _ = leadingOrTrailingQuotes.Replace(filtered, "", 0, -1)
+
+    // Strip out escaping and single quotes
+    // Even though this shows a slash in front, it will remove extra
+    //  escaping in the actual string, so it IS important.
+    filtered = targetQuotes.ReplaceAllString(filtered, "\"")
+    filtered = targetSingleQuotes.ReplaceAllString(filtered, "\"")
 
     // Step 1: Fix unquoted keys using a regex
     // Matches keys that are unquoted (e.g., key: "value") and ensures they are quoted.
@@ -32,9 +42,8 @@ func Parse(input string) (string, error) {
     // Step 2: Add commas after every key-value pair, if missing
     // Matches key-value pairs that are not followed by a comma or a closing brace/bracket.
     // Start at index one to make sure we don't hit the very first key.
-    // FIXME - there's a bug here where you have stuff like `"key": [` or `"key": {` on a line on its own.
-    //  It'll screw up and put commas at the start, like `, "key": [`
-    filtered, _ = targetMissingCommasBeforeKeysWithWhiteSpace.ReplaceFunc(filtered, addCommas, 1, -1)
+    // NOTE: this is hosed - figure out a way like the quoting function below
+    //filtered, _ = targetMissingCommasBeforeKeysWithWhiteSpace.ReplaceFunc(filtered, addCommas, 1, -1)
 
     // Step 2: Fix unquoted string values using a regex
     // Matches unquoted values that are not numbers, booleans, null, or JSON objects/arrays.
@@ -43,6 +52,10 @@ func Parse(input string) (string, error) {
         colonIndex := strings.Index(match, ":")
         value := strings.TrimSpace(match[colonIndex+1:])
         value = strings.Trim(value, ",")
+        value = strings.Trim(value, "[")
+        value = strings.Trim(value, "]")
+        value = strings.Trim(value, "{")
+        value = strings.Trim(value, "}")
         if value == "true" || value == "false" || value == "null" || isNumber(value) || isJSONStructure(value) {
             return match
         }
@@ -54,14 +67,14 @@ func Parse(input string) (string, error) {
     if !strings.HasPrefix(filtered, "[") && !strings.HasPrefix(filtered, "{") {
         filtered = "{" + filtered
     }
-    if !strings.HasSuffix(filtered, "[") && !strings.HasSuffix(filtered, "{") {
+    if !strings.HasSuffix(filtered, "]") && !strings.HasSuffix(filtered, "}") {
         filtered = filtered + "}"
     }
 
     // Step 4: Remove the trailing comma from the final key-value pair in each block
     // Matches a trailing comma before a closing brace or bracket.
-    reTrailingComma := regexp.MustCompile(`,(\s*[}\]])`)
-    filtered = reTrailingComma.ReplaceAllString(filtered, `$1`)
+    //reTrailingComma := regexp.MustCompile(`,(\s*[}\]])`)
+    //filtered = reTrailingComma.ReplaceAllString(filtered, `$1`)
 
     data, err := RecursiveUnmarshal(filtered)
     if err != nil {
