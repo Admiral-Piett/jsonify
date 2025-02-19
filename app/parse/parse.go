@@ -2,10 +2,13 @@ package parse
 
 import (
     "encoding/json"
+    "github.com/Admiral-Piett/jsonify/app/utils"
     "github.com/dlclark/regexp2"
     "regexp"
     "strings"
 )
+
+//TODO - add tests
 
 var leadingOrTrailingQuotes = regexp2.MustCompile(`^\\*"|\\*"$`, 0)
 
@@ -20,34 +23,29 @@ var targetMissingCommasBeforeKeysWithWhiteSpace = regexp2.MustCompile(`(?m)(?<!,
 var targetUnquotedKeys = regexp.MustCompile(`(?m)(^|[{\s,])([a-zA-Z0-9_\.]+)\s*:`)
 var targetUnquotedValues = regexp.MustCompile(`:\s*([a-zA-Z0-9_\-:.TZ\s]+)(\s*[,}\]])`)
 
-// QUESTION - with the inital destruction of the escaping, what about nested escaped strings?
-//  - We definitely want to consider them part of the JSON doc (too bad that choice for now, maybe a switch later?),
-//  but would that work if I just blindly replace all the escaped strings?
-func Parse(input string) (string, error) {
-    filtered := strings.TrimSpace(input)
-
+func applyRegexFiltering(input string) string {
     // Strip out any leading/trailing quotes
-    filtered, _ = leadingOrTrailingQuotes.Replace(filtered, "", 0, -1)
+    input, _ = leadingOrTrailingQuotes.Replace(input, "", 0, -1)
 
     // Strip out escaping and single quotes
     // Even though this shows a slash in front, it will remove extra
     //  escaping in the actual string, so it IS important.
-    filtered = targetQuotes.ReplaceAllString(filtered, "\"")
-    filtered = targetSingleQuotes.ReplaceAllString(filtered, "\"")
+    input = targetQuotes.ReplaceAllString(input, "\"")
+    input = targetSingleQuotes.ReplaceAllString(input, "\"")
 
     // Step 1: Fix unquoted keys using a regex
     // Matches keys that are unquoted (e.g., key: "value") and ensures they are quoted.
-    filtered = targetUnquotedKeys.ReplaceAllString(filtered, `$1"$2":`)
+    input = targetUnquotedKeys.ReplaceAllString(input, `$1"$2":`)
 
     // Step 2: Add commas after every key-value pair, if missing
     // Matches key-value pairs that are not followed by a comma or a closing brace/bracket.
     // Start at index one to make sure we don't hit the very first key.
     // NOTE: this is hosed - figure out a way like the quoting function below
-    //filtered, _ = targetMissingCommasBeforeKeysWithWhiteSpace.ReplaceFunc(filtered, addCommas, 1, -1)
+    //input, _ = targetMissingCommasBeforeKeysWithWhiteSpace.ReplaceFunc(input, addCommas, 1, -1)
 
     // Step 2: Fix unquoted string values using a regex
     // Matches unquoted values that are not numbers, booleans, null, or JSON objects/arrays.
-    filtered = targetUnquotedValues.ReplaceAllStringFunc(filtered, func(match string) string {
+    input = targetUnquotedValues.ReplaceAllStringFunc(input, func(match string) string {
         // Extract the value and ensure it requires quoting
         colonIndex := strings.Index(match, ":")
         value := strings.TrimSpace(match[colonIndex+1:])
@@ -56,7 +54,7 @@ func Parse(input string) (string, error) {
         value = strings.Trim(value, "]")
         value = strings.Trim(value, "{")
         value = strings.Trim(value, "}")
-        if value == "true" || value == "false" || value == "null" || isNumber(value) || isJSONStructure(value) {
+        if value == "true" || value == "false" || value == "null" || utils.IsNumber(value) || utils.IsJSONStructure(value) {
             return match
         }
         return match[:colonIndex+1] + ` "` + value + `"` + match[len(match)-1:]
@@ -64,44 +62,40 @@ func Parse(input string) (string, error) {
 
     // If we're an array, you're going to have to have said that with the square brackets in the input,
     //otherwise if we just have key: values, we need to make sure we are wrapped in curly braces.
-    if !strings.HasPrefix(filtered, "[") && !strings.HasPrefix(filtered, "{") {
-        filtered = "{" + filtered
+    if !strings.HasPrefix(input, "[") && !strings.HasPrefix(input, "{") && strings.Contains(input, ":") {
+        input = "{" + input
     }
-    if !strings.HasSuffix(filtered, "]") && !strings.HasSuffix(filtered, "}") {
-        filtered = filtered + "}"
+    if !strings.HasSuffix(input, "]") && !strings.HasSuffix(input, "}") && strings.Contains(input, ":") {
+        input = input + "}"
     }
 
     // Step 4: Remove the trailing comma from the final key-value pair in each block
     // Matches a trailing comma before a closing brace or bracket.
     //reTrailingComma := regexp.MustCompile(`,(\s*[}\]])`)
-    //filtered = reTrailingComma.ReplaceAllString(filtered, `$1`)
+    //input = reTrailingComma.ReplaceAllString(input, `$1`)
+    return input
+}
+
+// QUESTION - with the inital destruction of the escaping, what about nested escaped strings?
+//  - We definitely want to consider them part of the JSON doc (too bad that choice for now, maybe a switch later?),
+//  but would that work if I just blindly replace all the escaped strings?
+func Parse(input string) (string, error) {
+    filtered := strings.TrimSpace(input)
+
+    if utils.IsComplexObject(filtered) {
+        filtered = applyRegexFiltering(filtered)
+    }
 
     data, err := RecursiveUnmarshal(filtered)
     if err != nil {
-        return filtered, nil
+        return input, nil
     }
 
     result, err := json.MarshalIndent(data, "", "    ")
     if err != nil {
-        return filtered, nil
+        return input, nil
     }
     return string(result), nil
-}
-
-// isNumber checks if a value is a valid JSON number.
-func isNumber(value string) bool {
-    // A regex to match integers or floating-point numbers
-    reNumber := regexp.MustCompile(`^-?\d+(\.\d+)?([eE][+-]?\d+)?$`)
-    return reNumber.MatchString(value)
-}
-
-// isJSONStructure checks if a value is a JSON object or array (e.g., starts with '{' or '[').
-func isJSONStructure(value string) bool {
-    return strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[")
-}
-
-func addCommas(match regexp2.Match) string {
-    return "," + match.String()
 }
 
 // RecursiveUnmarshal takes a JSON byte array and recursively unmarshals it into a nested map or slice.
