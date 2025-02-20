@@ -1,211 +1,279 @@
 package parse
 
 import (
-    "encoding/json"
-    "github.com/Admiral-Piett/jsonify/app/utils"
-    "github.com/dlclark/regexp2"
-    "regexp"
-    "strings"
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
 )
 
-//TODO - add tests
+// Also strip just lingering `\` characters at the start and end of the line.
+// We may have skipped the `"` characters during processing.
+var targetStartEndOfLineQuotes = regexp.MustCompile(`^\\*"|\\*"$|^\\*'|\\*'$`)
+var targetStartEndResidualSlashes = regexp.MustCompile(`^\\+|\\+$`)
 
-var leadingOrTrailingQuotes = regexp2.MustCompile(`^\\*"|\\*"$`, 0)
+func Parse(input string) (string, error) {
+	result := strings.TrimSpace(input)
 
-// Finds all quotes, with any amount of escaped slashes
-var targetQuotes = regexp.MustCompile(`\\*"`)
-var targetSingleQuotes = regexp.MustCompile(`\\*'`)
+	// NOTE: We could try to just marshal/unmarshall blind first.  If that doesn't work, we could correct.
+	//  - We'd need - `stripUnneededQuotes` in `utils.go`
 
-// This targets keys (fully quoted), that are missing a comma followed by white space before them.
-//FIXME - I can't figure out how to accurately target the whitespace as optional.
-var targetMissingCommasBeforeKeysWithWhiteSpace = regexp2.MustCompile(`(?m)(?<!,)\s(^|\")([a-zA-Z0-9_\.]+)\"\s*:`, 0)
+	if IsComplexObject(result) {
+		// Trim these off the top since it's just going to throw us off later.
+		result = targetStartEndOfLineQuotes.ReplaceAllString(result, "")
+		result = strings.Trim(result, "{")
+		result = strings.Trim(result, "}")
+		result = strings.Trim(result, "[")
+		result = strings.Trim(result, "]")
 
-var targetUnquotedKeys = regexp.MustCompile(`(?m)(^|[{\s,])([a-zA-Z0-9_\.]+)\s*:`)
-var targetUnquotedValues = regexp.MustCompile(`:\s*([a-zA-Z0-9_\-:.TZ\s]+)(\s*[,}\]])`)
+		runeSlice := []rune(result)
+		isObj, err := determineObjectType(runeSlice)
+		if err != nil {
+			return "", err
+		}
 
-func applyRegexFiltering(input string) string {
-    // Strip out any leading/trailing quotes
-    input, _ = leadingOrTrailingQuotes.Replace(input, "", 0, -1)
+		filtered, _, err := correctInvalidFormatting(isObj, runeSlice)
+		if err != nil {
+			return "", err
+		}
+		result = filtered
+	}
 
-    // Strip out escaping and single quotes
-    // Even though this shows a slash in front, it will remove extra
-    //  escaping in the actual string, so it IS important.
-    input = targetQuotes.ReplaceAllString(input, "\"")
-    input = targetSingleQuotes.ReplaceAllString(input, "\"")
+	data, err := RecursiveUnmarshal(result)
+	if err != nil {
+		return "", err
+	}
 
-    // Step 1: Fix unquoted keys using a regex
-    // Matches keys that are unquoted (e.g., key: "value") and ensures they are quoted.
-    input = targetUnquotedKeys.ReplaceAllString(input, `$1"$2":`)
-
-    // Step 2: Add commas after every key-value pair, if missing
-    // Matches key-value pairs that are not followed by a comma or a closing brace/bracket.
-    // Start at index one to make sure we don't hit the very first key.
-    // NOTE: this is hosed - figure out a way like the quoting function below
-    //input, _ = targetMissingCommasBeforeKeysWithWhiteSpace.ReplaceFunc(input, addCommas, 1, -1)
-
-    // Step 2: Fix unquoted string values using a regex
-    // Matches unquoted values that are not numbers, booleans, null, or JSON objects/arrays.
-    input = targetUnquotedValues.ReplaceAllStringFunc(input, func(match string) string {
-        // Extract the value and ensure it requires quoting
-        colonIndex := strings.Index(match, ":")
-        value := strings.TrimSpace(match[colonIndex+1:])
-        value = strings.Trim(value, ",")
-        value = strings.Trim(value, "[")
-        value = strings.Trim(value, "]")
-        value = strings.Trim(value, "{")
-        value = strings.Trim(value, "}")
-        if value == "true" || value == "false" || value == "null" || utils.IsNumber(value) || utils.IsJSONStructure(value) {
-            return match
-        }
-        return match[:colonIndex+1] + ` "` + value + `"` + match[len(match)-1:]
-    })
-
-    // If we're an array, you're going to have to have said that with the square brackets in the input,
-    //otherwise if we just have key: values, we need to make sure we are wrapped in curly braces.
-    if !strings.HasPrefix(input, "[") && !strings.HasPrefix(input, "{") && strings.Contains(input, ":") {
-        input = "{" + input
-    }
-    if !strings.HasSuffix(input, "]") && !strings.HasSuffix(input, "}") && strings.Contains(input, ":") {
-        input = input + "}"
-    }
-
-    // Step 4: Remove the trailing comma from the final key-value pair in each block
-    // Matches a trailing comma before a closing brace or bracket.
-    //reTrailingComma := regexp.MustCompile(`,(\s*[}\]])`)
-    //input = reTrailingComma.ReplaceAllString(input, `$1`)
-    return input
+	resultBytes, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		return "", err
+	}
+	return string(resultBytes), nil
 }
 
-// QUESTION - with the inital destruction of the escaping, what about nested escaped strings?
-//  - We definitely want to consider them part of the JSON doc (too bad that choice for now, maybe a switch later?),
-//  but would that work if I just blindly replace all the escaped strings?
-func Parse(input string) (string, error) {
-    filtered := strings.TrimSpace(input)
+func determineObjectType(input []rune) (isObject bool, err error) {
+	isObject = false
+	err = nil
 
-    if utils.IsComplexObject(filtered) {
-        filtered = applyRegexFiltering(filtered)
-    }
+	firstChar := input[0]
+	if firstChar == '{' {
+		isObject = true
+	} else if firstChar == '[' {
+		isObject = false
+	} else if containsRune(input, ':') {
+		isObject = true
+	} else if containsRune(input, ',') {
+		isObject = false
+	} else {
+		err = fmt.Errorf("invalid complex data type found: %s", string(input))
+	}
 
-    data, err := RecursiveUnmarshal(filtered)
-    if err != nil {
-        return input, nil
-    }
+	return
+}
 
-    result, err := json.MarshalIndent(data, "", "    ")
-    if err != nil {
-        return input, nil
-    }
-    return string(result), nil
+func format(input string) string {
+	result := strings.TrimSpace(input)
+	result = targetStartEndOfLineQuotes.ReplaceAllString(result, "")
+	result = targetStartEndResidualSlashes.ReplaceAllString(result, "")
+
+	if result == "true" || result == "false" || result == "null" || IsNumber(result) || IsComplexObject(input) {
+		return result
+	}
+	return fmt.Sprintf(`"%s"`, result)
+}
+
+func correctInvalidFormatting(isObj bool, input []rune) (result string, processedIndex int, err error) {
+	result = ""
+	// If we're just starting, we want to make sure we start processing normally,
+	//  and don't skip in the index compare below.
+	processedIndex = -1
+	err = nil
+
+	key := strings.Builder{}
+	value := strings.Builder{}
+	current := strings.Builder{}
+	processedData := strings.Builder{}
+	for i, r := range input {
+		// We may have processed recursively ahead, we need to skip that piece before we can start again.
+		if i <= processedIndex || isSkippableCharacter(r) {
+			continue
+		}
+		processedIndex = i
+
+		if startsComplexDataStructure(r) {
+			nestedInput := input[i+1:]
+			nestedIsObj, e := determineObjectType([]rune{r})
+			if e != nil {
+				err = e
+				return
+			}
+			nestedData, nestedIndex, e := correctInvalidFormatting(nestedIsObj, nestedInput)
+			if e != nil {
+				err = e
+				return
+			}
+			current.WriteString(nestedData)
+			// Start processing on the index after this.
+			processedIndex += nestedIndex + 1
+			continue
+		} else if endsComplexDataStructure(r) {
+			// We will ditch the opening tags by way of the above if condition.
+			// Here, we'll skip the closing tags and stop the loop, so we can save and set the tags below.
+			// We've already determined which ones they should be with `isObj`.
+			break
+		}
+		if r == ':' {
+			key.WriteString(format(current.String()))
+			current = strings.Builder{}
+			continue
+		}
+		if r == ',' {
+			value.WriteString(format(current.String()))
+			if key.Len() > 0 {
+				processedData.WriteString(fmt.Sprintf("%s: %s,", key.String(), value.String()))
+			} else {
+				processedData.WriteString(fmt.Sprintf("%s,", value.String()))
+			}
+
+			key = strings.Builder{}
+			value = strings.Builder{}
+			current = strings.Builder{}
+			continue
+		}
+		current.WriteRune(r)
+	}
+
+	// Catch the end of the processing
+	// NOTE: this is the last one, so we will take out the commas (that's why this isn't shared with the above saving)
+	if current.Len() > 0 {
+		value.WriteString(format(current.String()))
+		if key.Len() > 0 {
+			processedData.WriteString(fmt.Sprintf("%s: %s", key.String(), value.String()))
+		} else {
+			processedData.WriteString(fmt.Sprintf("%s", value.String()))
+		}
+	}
+
+	result = processedData.String()
+	// It's potentially possible to get through here with a residual `,` if one came in with the input.
+	// If we have that, strip it before we wrap the data in tags.
+	result = strings.TrimSuffix(result, ",")
+	if isObj {
+		result = "{" + result + "}"
+	} else {
+		result = "[" + result + "]"
+	}
+	return
 }
 
 // RecursiveUnmarshal takes a JSON byte array and recursively unmarshals it into a nested map or slice.
 func RecursiveUnmarshal(data string) (interface{}, error) {
-    var result interface{}
+	var result interface{}
 
-    // Attempt to unmarshal the JSON into an empty interface
-    err := json.Unmarshal([]byte(data), &result)
-    if err != nil {
-        return nil, err
-    }
+	// Attempt to unmarshal the JSON into an empty interface
+	err := json.Unmarshal([]byte(data), &result)
+	if err != nil {
+		return nil, err
+	}
 
-    // Process the unmarshaled data recursively
-    result = processRecursively(result)
+	// Process the unmarshaled data recursively
+	result = processRecursively(result)
 
-    return result, nil
+	return result, nil
 }
 
 // processRecursively handles maps and slices recursively to ensure all values are processed.
 func processRecursively(input interface{}) interface{} {
-    switch value := input.(type) {
-    case map[string]interface{}: // Process a JSON object
-        value = handleDotNotation(value)
-        for key, val := range value {
-            mapVal, ok := val.(map[string]interface{})
-            if ok {
-                value[key] = processRecursively(mapVal)
-            }
-            arrVal, ok := val.([]interface{})
-            if ok {
-                value[key] = processRecursively(arrVal)
-            }
-            strVal, ok := val.(string)
-            if ok {
-                if strings.HasPrefix(strVal, "{") {
-                    var tmp map[string]interface{}
-                    err := json.Unmarshal([]byte(strVal), &tmp)
-                    if err == nil {
-                        result := processRecursively(tmp)
-                        value[key] = result
-                    }
-                }
-                if strings.HasPrefix(strVal, "[") {
-                    var tmp []interface{}
-                    err := json.Unmarshal([]byte(strVal), &tmp)
-                    if err == nil {
-                        result := processRecursively(tmp)
-                        value[key] = result
-                    }
-                }
-            }
-        }
-        return value
-    case []interface{}: // Process a JSON array
-        for i, val := range value {
-            mapVal, ok := val.(map[string]interface{})
-            if ok {
-                value[i] = processRecursively(mapVal)
-            }
-            arrVal, ok := val.([]interface{})
-            if ok {
-                value[i] = processRecursively(arrVal)
-            }
-            strVal, ok := val.(string)
-            if ok {
-                if strings.HasPrefix(strVal, "{") {
-                    var tmp map[string]interface{}
-                    err := json.Unmarshal([]byte(strVal), &tmp)
-                    if err == nil {
-                        result := processRecursively(tmp)
-                        value[i] = result
-                    }
-                }
-                if strings.HasPrefix(strVal, "[") {
-                    var tmp []interface{}
-                    err := json.Unmarshal([]byte(strVal), &tmp)
-                    if err == nil {
-                        result := processRecursively(tmp)
-                        value[i] = result
-                    }
-                }
-            }
-        }
-        return value
-    default: // Base case: return the value as is for primitive types
-        return value
-    }
+	switch value := input.(type) {
+	case map[string]interface{}: // Process a JSON object
+		value = handleDotNotation(value)
+		for key, val := range value {
+			mapVal, ok := val.(map[string]interface{})
+			if ok {
+				value[key] = processRecursively(mapVal)
+			}
+			arrVal, ok := val.([]interface{})
+			if ok {
+				value[key] = processRecursively(arrVal)
+			}
+			strVal, ok := val.(string)
+			if ok {
+				if strings.HasPrefix(strVal, "{") {
+					var tmp map[string]interface{}
+					err := json.Unmarshal([]byte(strVal), &tmp)
+					if err == nil {
+						result := processRecursively(tmp)
+						value[key] = result
+					}
+				}
+				if strings.HasPrefix(strVal, "[") {
+					var tmp []interface{}
+					err := json.Unmarshal([]byte(strVal), &tmp)
+					if err == nil {
+						result := processRecursively(tmp)
+						value[key] = result
+					}
+				}
+			}
+		}
+		return value
+	case []interface{}: // Process a JSON array
+		for i, val := range value {
+			mapVal, ok := val.(map[string]interface{})
+			if ok {
+				value[i] = processRecursively(mapVal)
+			}
+			arrVal, ok := val.([]interface{})
+			if ok {
+				value[i] = processRecursively(arrVal)
+			}
+			strVal, ok := val.(string)
+			if ok {
+				if strings.HasPrefix(strVal, "{") {
+					var tmp map[string]interface{}
+					err := json.Unmarshal([]byte(strVal), &tmp)
+					if err == nil {
+						result := processRecursively(tmp)
+						value[i] = result
+					}
+				}
+				if strings.HasPrefix(strVal, "[") {
+					var tmp []interface{}
+					err := json.Unmarshal([]byte(strVal), &tmp)
+					if err == nil {
+						result := processRecursively(tmp)
+						value[i] = result
+					}
+				}
+			}
+		}
+		return value
+	default: // Base case: return the value as is for primitive types
+		return value
+	}
 }
 
 func handleDotNotation(data map[string]interface{}) map[string]interface{} {
-    result := map[string]interface{}{}
-    for key, value := range data {
-        if key == "" {
-            continue
-        }
-        setNestedValue(result, key, value)
-    }
-    return result
+	result := map[string]interface{}{}
+	for key, value := range data {
+		if key == "" {
+			continue
+		}
+		setNestedValue(result, key, value)
+	}
+	return result
 }
 
 func setNestedValue(data map[string]interface{}, path string, value interface{}) {
-    keys := strings.Split(path, ".")
-    current := data
+	keys := strings.Split(path, ".")
+	current := data
 
-    for _, key := range keys[:len(keys)-1] {
-        if _, ok := current[key]; !ok {
-            current[key] = make(map[string]interface{})
-        }
-        current = current[key].(map[string]interface{})
-    }
+	for _, key := range keys[:len(keys)-1] {
+		if _, ok := current[key]; !ok {
+			current[key] = make(map[string]interface{})
+		}
+		current = current[key].(map[string]interface{})
+	}
 
-    current[keys[len(keys)-1]] = value
+	current[keys[len(keys)-1]] = value
 }

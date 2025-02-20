@@ -4,7 +4,6 @@ go 1.23
 
 require (
 	cogentcore.org/core v0.3.5
-	github.com/dlclark/regexp2 v1.11.4
 	github.com/stretchr/testify v1.9.0
 )
 
@@ -17,6 +16,7 @@ require (
 	github.com/chewxy/math32 v1.11.1 // indirect
 	github.com/cogentcore/webgpu v0.0.0-20241106201421-b11ae16be67f // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20240506104042-037f3cc74f2a // indirect
 	github.com/goki/freetype v1.0.5 // indirect
