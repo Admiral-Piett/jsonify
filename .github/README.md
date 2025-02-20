@@ -5,7 +5,15 @@ parse that into true json and display the output.
 
 ![Demo Gif](static/demo.gif)
 
-### NOTE: Arrays or straight text not yet supported
+## Warning
+We try to do some clean up for you in terms of quoting things, correcting single quotes VS double quotes, etc. 
+**HOWEVER** we're not perfect.  Not having your commas or colon fields placed correctly will wreak havoc.  
+We need those as anchors to figure out what's going on, and what your structure is.  So missing or misplacing 
+those characters is fair game.
+
+### For Now and Your Sanity's Sake
+You will want to try to strip both `:` and `'` out of your keys and values.  
+Otherwise, it'll almost certainly chop them up.
 
 ## Hot Keys
 - `Cmd + q` - Exit
