@@ -8,50 +8,54 @@ on:
         description: "New Build Tag (eg. 0.0.1)"
         required: true
 
+permissions:
+  contents: write
+
 jobs:
-  tag:
-    runs-on: ubuntu-22.04
+  release:
+    name: Release Version "${{ inputs.tag }}"
+    runs-on: 'macos-latest'
     steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: '0'
-
-      - name: Print Input
-        run: echo "${{ inputs.tag }}"
-
-      - name: Bump version and push tag
-        uses: anothrNick/github-tag-action@1.67.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
-          WITH_V: true
-          CUSTOM_TAG: "v${{ inputs.tag }}"
-
-  goreleaser:
-    needs: tag
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.23.3'
 
-      - run: go version
+      - name: Set up Core
+        run: go install cogentcore.org/core/cmd/core@main && core setup
 
-      - name: Install Core
-        run: go install cogentcore.org/core/cmd/core@main
+      - name: Run Tests
+        run: go test -race ./...
 
-      - name: Build App arm64
-        run: core build darwin/arm64 -name jsonify_arm64/jsonify -dir app
+      # -C forces the Go compiler to change directories before runnings, and it can only find the Go files if
+      # it's in the `app` folder.  So after building we use the `-o ../` command to force it to place the
+      # resulting binary back in the original directory of the shell.  So we can process the subsequent commands
+      # from there.
+      - name: Build
+        run: |
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -C ./app -o ../jsonify && gzip jsonify && mv jsonify.gz jsonify_amd64.gz
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -C ./app -o ../jsonify && gzip jsonify && mv jsonify.gz jsonify_arm64.gz
 
-      - name: ⏫ Upload arm64 build
-        uses: nmerget/upload-gzip-artifact@main
+      - name: Set Release Notes
+        run:
+          git log $(git describe HEAD~ --tags --abbrev=0)..HEAD --pretty='format:* %h %s%n  * %an <%ae>' --no-merges >> ".github/RELEASE-TEMPLATE.md"
+
+      - name: Tag branch
+        run: |
+          git tag -f -a v${{ inputs.tag }} -m "Release v${{ inputs.tag }}"
+          git push -f origin v${{ inputs.tag }}
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: jsonify_arm64
-          path: jsonify_arm64
-
+          tag_name: "v${{ inputs.tag }}"
+          name: "v${{ inputs.tag }}"
+          body_path: ".github/RELEASE-TEMPLATE.md"
+          files: |
+            jsonify_amd64.gz
+            jsonify_arm64.gz
