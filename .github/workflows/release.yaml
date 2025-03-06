@@ -2,9 +2,6 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - add-deployments
   workflow_dispatch:
     inputs:
       tag:
@@ -16,25 +13,13 @@ permissions:
 
 jobs:
   release:
-    name: Release
-#    name: Release Version "${{ inputs.tag }}"
-#    runs-on: 'ubuntu-latest'
+    name: Release Version "${{ inputs.tag }}"
     runs-on: 'macos-latest'
     steps:
-#      - name: Print Input
-#        run: |
-#          echo "${{ inputs.tag }}"
-
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-#      - name: Set up Environment
-#        run: |
-#          sudo apt update
-#          sudo apt install -y libgl1-mesa-dev xorg-dev
-##          sudo apt install -y clang build-essential libgl1-mesa-dev xorg-dev
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -61,53 +46,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-#          name: "${{ inputs.tag }}"
-          name: "0.1.0"
+          name: "${{ inputs.tag }}"
           body_path: ".github/RELEASE-TEMPLATE.md"
           files: |
             jsonify_amd64.gz
             jsonify_arm64.gz
-
-#      - name: Set up Environment
-#        run: |
-#          sudo apt update
-#          sudo apt install -y libgl1-mesa-dev xorg-dev
-##          sudo apt install -y clang build-essential libgl1-mesa-dev xorg-dev
-#
-#      - name: Set Up Go
-#        uses: actions/setup-go@v2
-#        with:
-#          go-version: '1.23.3'
-#
-#      - name: Run Tests
-#        run: go test -race ./...
-#
-#      # `reset` re-initializes the terminal session
-#      - name: Install Core CLI
-#        run: |
-#          go install cogentcore.org/core/cmd/core@main
-#          yes | core setup
-#          reset
-#
-#      - name: Build, Zip, and Rename
-#        run: |
-#           CC=gcc CGO_ENABLED=1 core build darwin/arm64 -name jsonify -dir app
-##          CC=gcc CGO_ENABLED=1 core build darwin/arm64 -name jsonify -dir app
-##          CC=gcc CGO_ENABLED=1 core build darwin/amd64 -name jsonify -dir app
-#
-##          CGO_ENABLED=1 core build darwin/amd64 -name jsonify -dir app && gzip jsonify && mv jsonify.gz jsonify_amd64.gz
-##          CGO_ENABLED=1 core build darwin/arm64 -name jsonify -dir app && gzip jsonify && mv jsonify.gz jsonify_arm64.gz
-#
-##      - name: Set Release Notes
-##        run:
-##          git log $(git describe HEAD~ --tags --abbrev=0)..HEAD --pretty='format:* %h %s%n  * %an <%ae>' --no-merges >> ".github/RELEASE-TEMPLATE.md"
-##
-##      - name: Release
-##        uses: softprops/action-gh-release@v2
-##        if: startsWith(github.ref, 'refs/tags/')
-##        with:
-##          name: "${{ inputs.tag }}"
-##          body_path: ".github/RELEASE-TEMPLATE.md"
-##          files: |
-##            jsonify_amd64.gz
-##            jsonify_arm64.gz

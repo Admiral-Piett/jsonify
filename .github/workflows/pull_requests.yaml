@@ -1,7 +1,7 @@
 # To create a github access token - Go to Profile > Settings > Developer Settings > Github Access Tokens
 name: Pull Request
 
-#on: push
+on: push
 
 jobs:
   release:
@@ -9,7 +9,7 @@ jobs:
     runs-on: 'ubuntu-latest'
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Environment
         run: |
@@ -18,7 +18,7 @@ jobs:
           sudo apt install -y libgl1-mesa-dev xorg-dev
 
       - name: Set Up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
           go-version: '1.23.3'
 
