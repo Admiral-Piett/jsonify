@@ -1,4 +1,7 @@
 **/jsonify
+*.gz
 
 .idea
 dist
+
+**/.DS_Store
