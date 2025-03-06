@@ -24,3 +24,22 @@ Otherwise, it'll almost certainly chop them up.
 
 #### Select Output Area
 - `Cmd + c` - Copied output
+
+## Building
+You need to install the Cogent Core command line tool.  You can then use the `core` command to 
+build and run various things.
+
+[Install Instructions](go install cogentcore.org/core/cmd/core@main)
+[Build/Run Instructions](https://www.cogentcore.org/core/build#details)
+
+## Release Action
+- Requires a version number, eg. 0.0.1
+- It will print your input, run the tests, and if they pass, build and push the new release for 
+both `darwin/amd64` (Intel Macs) and `darwin/arm64` (Apple/M Series Macs) platforms.  
+- Release notes will be the commit titles.
+
+### Developing The Github Action
+- Install `act` (local github action runner) - [Act Docs](https://nektosact.com/usage/index.html)
+- Execute via `act workflow_dispatch --input tag=0.0.1`
+  - Which will install all relevant Action replacement images locally, and run all `workflow_dispatch` 
+  workflows in the `.github/workflows` directory.
