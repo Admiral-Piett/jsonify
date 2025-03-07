@@ -7,9 +7,9 @@ parse that into true json and display the output.
 
 ## Warning
 We try to do some clean up for you in terms of quoting things, correcting single quotes VS double quotes, etc. 
-**HOWEVER** we're not perfect.  Not having your commas or colon fields placed correctly will wreak havoc.  
-We need those as anchors to figure out what's going on, and what your structure is.  So missing or misplacing 
-those characters is fair game.
+**HOWEVER** we're not perfect.  Not having your commas or colon fields placed correctly will wreak havoc. We will 
+try to detect missing commas, but we can't be perfect. We need those as anchors to figure out what's going on, 
+and what your structure is.  So missing or misplacing those "anchor" characters is fair game.
 
 ### For Now and Your Sanity's Sake
 You will want to try to strip both `:` and `'` out of your keys and values.  

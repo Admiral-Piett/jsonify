@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -17,8 +18,8 @@ func isSkippableCharacter(value rune) bool {
 	switch {
 	case strings.ContainsRune(`"' `, value):
 		return true
-	case '\n' == value:
-		return true
+	//case '\n' == value:
+	//	return true
 	case '\t' == value:
 		return true
 	}
@@ -42,6 +43,29 @@ func containsRune(runes []rune, r rune) bool {
 		}
 	}
 	return false
+}
+
+func writeLine(key, value, processedData strings.Builder) strings.Builder {
+	if key.Len() > 0 {
+		processedData.WriteString(fmt.Sprintf("%s: %s,", key.String(), value.String()))
+	} else {
+		processedData.WriteString(fmt.Sprintf("%s,", value.String()))
+	}
+	return processedData
+}
+
+func findNextAnchorCharacter(data []rune) rune {
+	for _, r := range data {
+		switch r {
+		case ':':
+			return r
+		case ',':
+			return r
+		case '\n':
+			return r
+		}
+	}
+	return 0
 }
 
 //func stripUnneededQuotes(input interface{}) interface{} {
