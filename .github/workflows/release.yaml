@@ -32,7 +32,7 @@ jobs:
       - name: Run Tests
         run: go test ./...
 
-      # -C forces the Go compiler to change directories before runnings, and it can only find the Go files if
+      # -C forces the Go compiler to change directories before running, and it can only find the Go files if
       # it's in the `app` folder.  So after building we use the `-o ../` command to force it to place the
       # resulting binary back in the original directory of the shell.  So we can process the subsequent commands
       # from there.
