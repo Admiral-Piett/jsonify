@@ -93,6 +93,8 @@ func correctInvalidFormatting(isObj bool, input []rune) (result string, processe
 	value := strings.Builder{}
 	current := strings.Builder{}
 	processedData := strings.Builder{}
+	seenSemiColon := false
+
 	for i, r := range input {
 		// We may have processed recursively ahead, we need to skip that piece before we can start again.
 		if i <= processedIndex || isSkippableCharacter(r) {
@@ -125,19 +127,42 @@ func correctInvalidFormatting(isObj bool, input []rune) (result string, processe
 		if r == ':' {
 			key.WriteString(format(current.String()))
 			current = strings.Builder{}
+			seenSemiColon = true
 			continue
 		}
 		if r == ',' {
 			value.WriteString(format(current.String()))
-			if key.Len() > 0 {
-				processedData.WriteString(fmt.Sprintf("%s: %s,", key.String(), value.String()))
-			} else {
-				processedData.WriteString(fmt.Sprintf("%s,", value.String()))
-			}
+			processedData = writeLine(key, value, processedData)
 
 			key = strings.Builder{}
 			value = strings.Builder{}
 			current = strings.Builder{}
+			seenSemiColon = false
+			continue
+		}
+		if r == '\n' {
+			// If we haven't seen the middle marker of this line yet, then we can consider this cruft,
+			// throw it out, and continue.
+			if seenSemiColon == false {
+				continue
+			}
+
+			// If the next "anchor" we find, isn't a `:` we will assume we're not yet at the end of the current
+			// line's value.  That means we can't interpret this `\n` as a key/value pair break, and we need to
+			// throw out this newline character and continue processing.
+			// `i+1` is required to start searching after the current character which is already a `\n`
+			nextAnchor := findNextAnchorCharacter(input[i+1:])
+			if nextAnchor != ':' {
+				continue
+			}
+
+			value.WriteString(format(current.String()))
+			processedData = writeLine(key, value, processedData)
+
+			key = strings.Builder{}
+			value = strings.Builder{}
+			current = strings.Builder{}
+			seenSemiColon = false
 			continue
 		}
 		current.WriteRune(r)
@@ -147,11 +172,7 @@ func correctInvalidFormatting(isObj bool, input []rune) (result string, processe
 	// NOTE: this is the last one, so we will take out the commas (that's why this isn't shared with the above saving)
 	if current.Len() > 0 {
 		value.WriteString(format(current.String()))
-		if key.Len() > 0 {
-			processedData.WriteString(fmt.Sprintf("%s: %s", key.String(), value.String()))
-		} else {
-			processedData.WriteString(fmt.Sprintf("%s", value.String()))
-		}
+		processedData = writeLine(key, value, processedData)
 	}
 
 	result = processedData.String()

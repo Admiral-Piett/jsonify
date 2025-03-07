@@ -94,18 +94,18 @@ func TestParse_success_unpacks_json_strings(t *testing.T) {
 //func TestParse_success_unpacks_nested_string_json_objects(t *testing.T) {
 //    input := `{"field1": "[\"test\", 1, false, null]", "nested.field2": "{\"nestedKey1\": 1, \"nestedKey2\": \"test\", \"nestedKey3\": true, \"nestedKey4\": null}"}`
 //    expected := `{
-//    "field1": [
-//        "test",
-//        1,
-//        false,
-//        null
-//    ],
-//    "nested.field2": {
-//        "nestedKey1": 1,
-//        "nestedKey2": "test",
-//        "nestedKey3": true,
-//        "nestedKey4": null
-//    }
+//   "field1": [
+//       "test",
+//       1,
+//       false,
+//       null
+//   ],
+//   "nested.field2": {
+//       "nestedKey1": 1,
+//       "nestedKey2": "test",
+//       "nestedKey3": true,
+//       "nestedKey4": null
+//   }
 //}`
 //
 //    result, err := Parse(input)
@@ -113,6 +113,58 @@ func TestParse_success_unpacks_json_strings(t *testing.T) {
 //    assert.Nil(t, err)
 //    assert.Equal(t, expected, result)
 //}
+
+func TestParse_success_handles_missing_commas(t *testing.T) {
+	input := `
+response_body.line1: BAD_REQUEST
+response_body.line2: "test"
+response_body.line3: null
+response_body.line4: true
+response_body.line5: 1
+`
+	expected := `{
+    "response_body": {
+        "line1": "BAD_REQUEST",
+        "line2": "test",
+        "line3": null,
+        "line4": true,
+        "line5": 1
+    }
+}`
+
+	result, err := Parse(input)
+
+	assert.Nil(t, err)
+	assert.Equal(t, expected, result)
+}
+
+func TestParse_success_handles_missing_commas_with_mid_value_new_lines(t *testing.T) {
+	input := `
+response_body.line1: BAD_
+REQUEST
+response_body.line2: "te
+st"
+response_body.line3: nul
+l
+response_body.line4: 
+true
+response_body.line5: 1
+`
+	expected := `{
+    "response_body": {
+        "line1": "BAD_REQUEST",
+        "line2": "test",
+        "line3": null,
+        "line4": true,
+        "line5": 1
+    }
+}`
+
+	result, err := Parse(input)
+
+	assert.Nil(t, err)
+	assert.Equal(t, expected, result)
+}
 
 func TestParse_success_strips_leading_trailing_spaces(t *testing.T) {
 	input := `    "  test "      `

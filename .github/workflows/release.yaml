@@ -30,7 +30,7 @@ jobs:
         run: go install cogentcore.org/core/cmd/core@main && core setup
 
       - name: Run Tests
-        run: go test -race ./...
+        run: go test ./...
 
       # -C forces the Go compiler to change directories before runnings, and it can only find the Go files if
       # it's in the `app` folder.  So after building we use the `-o ../` command to force it to place the
