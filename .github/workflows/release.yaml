@@ -38,12 +38,14 @@ jobs:
       # from there.
       - name: Build
         run: |
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -C ./app -o ../jsonify && gzip jsonify && mv jsonify.gz jsonify_amd64.gz
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -C ./app -o ../jsonify && gzip jsonify && mv jsonify.gz jsonify_arm64.gz
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -C ./app -o ../jsonify && chmod 755 jsonify && gzip jsonify && mv jsonify.gz jsonify_amd64.gz
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -C ./app -o ../jsonify && chmod 755 jsonify && gzip jsonify && mv jsonify.gz jsonify_arm64.gz
 
       - name: Set Release Notes
-        run:
-          git log $(git describe HEAD~ --tags --abbrev=0)..HEAD --pretty='format:* %h %s%n  * %an <%ae>' --no-merges >> ".github/RELEASE-TEMPLATE.md"
+        run: |
+          git pull --tags
+          newestTaggedCommit="$(git rev-list --tags --max-count=1)"
+          git log $(git describe HEAD~ --tags "$newestTaggedCommit" --abbrev=0)..HEAD --pretty='format:* %h %s%n  * %an <%ae>' --no-merges >> ".github/RELEASE-TEMPLATE.md"
 
       - name: Tag branch
         run: |
